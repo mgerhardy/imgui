@@ -100,6 +100,18 @@ struct ImGui_ImplSDL2_Data
     ImGui_ImplSDL2_Data()   { memset(this, 0, sizeof(*this)); }
 };
 
+// Helper structure we store in the void* RenderUserData field of each ImGuiViewport to easily retrieve our backend data.
+struct ImGui_ImplSDL2_ViewportData
+{
+    SDL_Window*     Window;
+    Uint32          WindowID;
+    bool            WindowOwned;
+    SDL_GLContext   GLContext;
+
+    ImGui_ImplSDL2_ViewportData() { Window = NULL; WindowID = 0; WindowOwned = false; GLContext = NULL; }
+    ~ImGui_ImplSDL2_ViewportData() { IM_ASSERT(Window == NULL && GLContext == NULL); }
+};
+
 // Backend data stored in io.BackendPlatformUserData to allow support for multiple Dear ImGui contexts
 // It is STRONGLY preferred that you use docking branch with multi-viewports (== single Dear ImGui context + multiple windows) instead of multiple Dear ImGui contexts.
 // FIXME: multi-context support is not well tested and probably dysfunctional in this backend.
@@ -328,17 +340,25 @@ bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event)
                 io.AddFocusEvent(true);
             else if (window_event == SDL_WINDOWEVENT_FOCUS_LOST)
                 io.AddFocusEvent(false);
-            if (window_event == SDL_WINDOWEVENT_CLOSE || window_event == SDL_WINDOWEVENT_MOVED || window_event == SDL_WINDOWEVENT_RESIZED)
+            if (window_event == SDL_WINDOWEVENT_CLOSE || window_event == SDL_WINDOWEVENT_MOVED || window_event == SDL_WINDOWEVENT_RESIZED || window_event == SDL_WINDOWEVENT_EXPOSED)
+            {
                 if (ImGuiViewport* viewport = ImGui::FindViewportByPlatformHandle((void*)SDL_GetWindowFromID(event->window.windowID)))
                 {
                     if (window_event == SDL_WINDOWEVENT_CLOSE)
                         viewport->PlatformRequestClose = true;
-                    if (window_event == SDL_WINDOWEVENT_MOVED)
+                    else if (window_event == SDL_WINDOWEVENT_MOVED)
                         viewport->PlatformRequestMove = true;
-                    if (window_event == SDL_WINDOWEVENT_RESIZED)
+                    else if (window_event == SDL_WINDOWEVENT_RESIZED)
                         viewport->PlatformRequestResize = true;
+                    else if (window_event == SDL_WINDOWEVENT_EXPOSED)
+                    {
+                        ImGui_ImplSDL2_ViewportData* vd = (ImGui_ImplSDL2_ViewportData*)viewport->PlatformUserData;
+                        SDL_GL_MakeCurrent(vd->Window, vd->GLContext);
+                        SDL_GL_SwapWindow(vd->Window);
+                    }
                     return true;
                 }
+            }
             return true;
         }
     }
@@ -666,18 +686,6 @@ void ImGui_ImplSDL2_NewFrame()
 // This is an _advanced_ and _optional_ feature, allowing the backend to create and handle multiple viewports simultaneously.
 // If you are new to dear imgui or creating a new binding for dear imgui, it is recommended that you completely ignore this section first..
 //--------------------------------------------------------------------------------------------------------
-
-// Helper structure we store in the void* RenderUserData field of each ImGuiViewport to easily retrieve our backend data.
-struct ImGui_ImplSDL2_ViewportData
-{
-    SDL_Window*     Window;
-    Uint32          WindowID;
-    bool            WindowOwned;
-    SDL_GLContext   GLContext;
-
-    ImGui_ImplSDL2_ViewportData() { Window = NULL; WindowID = 0; WindowOwned = false; GLContext = NULL; }
-    ~ImGui_ImplSDL2_ViewportData() { IM_ASSERT(Window == NULL && GLContext == NULL); }
-};
 
 static void ImGui_ImplSDL2_CreateWindow(ImGuiViewport* viewport)
 {
